@@ -1,0 +1,12 @@
+
+COPYING A BINARY FILE OF VARIOUS SIZES
+USING MAX_BUFFER AND A SEPARATE CHANNEL:
+
+10e7 Bytes: 13.883s
+10e6 Bytes: 01.679s
+10e5 Bytes: 00.231s
+10e4 Bytes: 00.094s
+10e3 Bytes: 00.084s
+
+The runtime seems to scale near-linearly with the amount of bytes in the binary file. As the amount of bytes scales by 10, the runtime scales by slightly less than 10 plus an additional offset attributed to other necessary processes like channel creation. This can easily be explained by the fact that when the filesize scales by a factor of 10, the amount of read/writes to the FIFO also scales by a factor of 10.
+

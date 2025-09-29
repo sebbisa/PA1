@@ -20,20 +20,17 @@ using namespace std;
 
 int main (int argc, char *argv[]) {
 	int opt;
-	int p = 1;
-	double t = 0.0;
-	int e = 1;
+	int p = -1;
+	double t = -1;
+	int e = -1;
 	bool newChannel = false;
 	int bufferSize = MAX_MESSAGE;
 
 	vector<FIFORequestChannel*> channels;
-
 	
 	string filename = "";
-	while ((opt = getopt(argc, argv, "c:p:t:e:f:m:")) != -1) {
+	while ((opt = getopt(argc, argv, "p:t:e:f:m:c")) != -1) {
 		switch (opt) {
-			case 'c':
-				newChannel = true;
 			case 'p':
 				p = atoi (optarg);
 				break;
@@ -48,6 +45,9 @@ int main (int argc, char *argv[]) {
 				break;
 			case 'm':
 				bufferSize = atoi (optarg);
+				break;
+			case 'c':
+				newChannel = true;
 				break;
 		}
 	}
@@ -64,43 +64,105 @@ int main (int argc, char *argv[]) {
 		return 1;
 	}
 
-	wait(nullptr);
 
-    FIFORequestChannel chan("control", FIFORequestChannel::CLIENT_SIDE);
-	channels.push_back(&chan);
+    FIFORequestChannel control_chan("control", FIFORequestChannel::CLIENT_SIDE);
+	channels.push_back(&control_chan);
 
 	if(newChannel){
 		MESSAGE_TYPE newChannelMessage = NEWCHANNEL_MSG;
-		chan.cwrite(&newChannelMessage, sizeof(MESSAGE_TYPE));
+		control_chan.cwrite(&newChannelMessage, sizeof(MESSAGE_TYPE));
+
+		char channelName[MAX_MESSAGE];
+		control_chan.cread(&channelName, MAX_MESSAGE);
+
+		FIFORequestChannel* createdChannel = new FIFORequestChannel(channelName, FIFORequestChannel::CLIENT_SIDE);
+		channels.push_back(createdChannel);
 	}
+
+	FIFORequestChannel chan = *(channels.back());
 	
 	// example data point request
     char buf[MAX_MESSAGE]; // 256
-    datamsg x(p, t, e);
-	
-	memcpy(buf, &x, sizeof(datamsg));
-	chan.cwrite(buf, sizeof(datamsg)); // question
-	double reply;
-	chan.cread(&reply, sizeof(double)); //answer
-	cout << "For person " << p << ", at time " << t << ", the value of ecg " << e << " is " << reply << endl;
-	
 
-	/*
-    // sending a non-sense message, you need to change this
-	filemsg fm(0, 0);
-	string fname = "teslkansdlkjflasjdf.dat";
-	
-	int len = sizeof(filemsg) + (fname.size() + 1);
-	char* buf2 = new char[len];
-	memcpy(buf2, &fm, sizeof(filemsg));
-	strcpy(buf2 + sizeof(filemsg), fname.c_str());
-	chan.cwrite(buf2, len);  // I want the file length;
+	if(p != -1 && t != -1 && e != -1){
 
-	delete[] buf2;
+		datamsg x(p, t, e);
 
-	*/
-	
+		memcpy(buf, &x, sizeof(datamsg));
+		chan.cwrite(buf, sizeof(datamsg)); // question
+		double reply;
+		chan.cread(&reply, sizeof(double)); //answer
+		cout << "For person " << p << ", at time " << t << ", the value of ecg " << e << " is " << reply << endl;
+		
+	}
+
+	else if(p != -1){
+
+		ofstream newfile;
+  		newfile.open("./received/x1.csv");
+
+		for(int i = 0; i < 1000; i++){
+			newfile << (i * 0.004);
+			double reply;
+
+			datamsg e1(p, i * 0.004, 1);
+			memcpy(buf, &e1, sizeof(datamsg));
+			chan.cwrite(buf, sizeof(datamsg)); // question
+			chan.cread(&reply, sizeof(double)); //answer
+			newfile << "," << reply;
+			
+			datamsg e2(p, i * 0.004, 2);
+			memcpy(buf, &e2, sizeof(datamsg));
+			chan.cwrite(buf, sizeof(datamsg)); // question
+			chan.cread(&reply, sizeof(double)); //answer
+			newfile << "," << reply << endl;
+			
+		}
+
+		newfile.close();
+	}
+
+	if(filename != ""){
+
+		FILE* newfile;
+		string newname = "./received/" + filename;
+		newfile = fopen(newname.c_str(), "wb");
+
+		filemsg fm(0, 0);
+		int len = sizeof(filemsg) + (filename.size() + 1);
+		char* buf2 = new char[len];
+		memcpy(buf2, &fm, sizeof(filemsg));
+		strcpy(buf2 + sizeof(filemsg), filename.c_str());
+		chan.cwrite(buf2, len);  // I want the file length;
+
+		int64_t filesize = 0;
+		chan.cread(&filesize, sizeof(int64_t));
+
+		char* buf3 = new char[bufferSize + 1];
+		filemsg* file_req = (filemsg*) buf2;
+		for(file_req->offset = 0; file_req->offset < filesize; file_req->offset += bufferSize){
+			file_req->length = min(filesize - file_req->offset, (int64_t) bufferSize);
+			chan.cwrite(buf2, len);
+			chan.cread(buf3, file_req->length);
+			buf3[file_req->length] = '\0';
+
+			fwrite(buf3, sizeof(char), file_req->length, newfile);
+		}
+
+		delete[] buf2;
+		delete[] buf3;
+
+		fclose(newfile);
+	}
+
+
 	// closing the channel    
     MESSAGE_TYPE m = QUIT_MSG;
-    chan.cwrite(&m, sizeof(MESSAGE_TYPE));
+	for(auto& c : channels)
+		c->cwrite(&m, sizeof(MESSAGE_TYPE));
+	
+	if(newChannel) delete channels[1];
+	
+	return 0;
+    
 }

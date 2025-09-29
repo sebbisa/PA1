@@ -179,7 +179,7 @@ int main (int argc, char *argv[]) {
 	for (int i = 0; i < NUM_PERSONS; i++) {
 		populate_file_data(i+1);
 	}
-	
+
 	FIFORequestChannel* control_channel = new FIFORequestChannel("control", FIFORequestChannel::SERVER_SIDE);
 	handle_process_loop(control_channel);
 	cout << "Server terminated" << endl;
